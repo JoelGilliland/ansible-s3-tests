@@ -1,0 +1,203 @@
+---
+- hosts: 127.0.0.1
+  connection: local
+  gather_facts: no
+  vars:
+    region: "us-east-1"
+    aws_access_key: ""
+    aws_secret_key: ""
+
+  tasks:
+  - set_fact:
+      bucket: "ansible-test-bucket-{{ 500 |random(start=1, step=5) }}"
+      file: "/tmp/ansible_get_object_{{ 500 |random(start=1, step=5) }}"
+  # This will run through all possible scenarios for putting an object to S3 with full validation of bucket and objects.
+  - name: GET with no parameters on non-existing bucket - line 483.
+    s3:
+      bucket: "{{ bucket }}-non-existing"
+      object: "{{ file }}"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+    failed_when: false
+  - fail: msg='Trying to GET an object in a non-existing bucket should fail.'
+    when: r is changed
+
+  - name: Create a random file for testing.
+    lineinfile:
+      create: yes
+      dest: "{{ file }}"
+      line: "s3 put object test"
+      state: present
+
+  - name: GET with overwrite=never with existing local file - line 475.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      overwrite: never
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='Local file exists and overwrite=never we should not be able to download anything'
+    when: r is changed
+
+  - name: Create the bucket.
+    s3:
+      bucket: "{{ bucket }}"
+      mode: create
+      validate: object
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='Bucket should not exist at start of test'
+    when: r is not changed
+
+  - name: PUT the test file into bucket.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}"
+      src: "{{ file }}"
+      mode: put
+      validate: object
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='File nor bucket should exist at start of test'
+    when: r is not changed
+
+  - name: Remove local test file
+    file:
+      path: "{{ file }}"
+      state: absent
+
+  - name: GET with no options with no local file on non-existing object - line 489.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}-non-existing"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+    failed_when: false
+  - fail: msg='Remote object does not exist. No file should have been downloaded'
+    when: r is changed
+
+  - name: GET with no options with no local file - line 496.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='Local file does not exist and remote bucket and object do. File should download.'
+    when: r is not changed
+
+  - name: GET with no options with existing local file(defaults overwrite=always) - line 496.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='Local file exists and overwrite=always we should have downloaded object.'
+    when: r is not changed
+
+  - name: GET with overwrite=always with existing local file - line 496.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      overwrite: always
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='Local file exists and overwrite=always we should have downloaded object.'
+    when: r is not changed
+
+  - name: GET with overwrite=different with existing local file - line 501.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      overwrite: different
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='Local file exists and overwrite=different we should only have downloaded if file was different.'
+    when: r is changed
+
+  - name: Change the local file.
+    lineinfile:
+      dest: "{{ file }}"
+      line: "{{ 50000 |random(start=1, step=5) }}"
+      state: present
+
+  - name: GET with overwrite=different with different local file - line 503.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      overwrite: different
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='Local file exists and overwrite=different we should have downloaded since file was different.'
+    when: r is not changed
+
+  - name: GET with version=non-existing - line 490.
+    s3:
+      bucket: "{{ bucket }}"
+      object: "{{ file }}"
+      dest: "{{ file }}"
+      mode: get
+      validate: object
+      version: "non-existing"
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+    failed_when: false
+  - fail: msg='We tried to get a non-existing version. This should have failed.'
+    when: r is changed
+
+  - name: Delete the bucket
+    s3:
+      bucket: "{{ bucket }}"
+      mode: delete
+      validate: object
+      region: "{{ region }}"
+      aws_access_key: "{{aws_access_key}}"
+      aws_secret_key: "{{aws_secret_key}}"
+    register: r
+  - fail: msg='Bucket and contents should have been deleted.'
+    when: r is not changed
